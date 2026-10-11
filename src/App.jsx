@@ -249,6 +249,7 @@ function App() {
               <h1>{lesson.heading}</h1>
               <p className="intro">{lesson.intro}</p>
               <div className="lesson-meta"><span><span className="meta-dot" /> {lesson.duration} READ</span><span><Zap size={14} fill="currentColor" /> +{lesson.xp} XP</span><span><span className="meta-square" /> HANDS-ON</span></div>
+              <a className="mobile-workspace-link" href="#sql-workspace"><Terminal size={18} /> Jump to SQL editor <ArrowRight size={17} /></a>
 
               <div className="section-divider"><span>THE CONCEPT</span><i /></div>
               <div className="concept-card"><span className="concept-icon"><Lightbulb size={20} /></span><div><strong>GOOD TO KNOW</strong><p>{lesson.concept}</p></div></div>
@@ -267,7 +268,7 @@ function App() {
           </div>
         </> : <>
           <div className="breadcrumb"><span>QUERY QUEST</span><ChevronRight size={13} /><strong>FREE PLAYGROUND</strong></div>
-          <div className="content-grid playground-grid"><div className="lesson-content playground-content"><div className="eyebrow"><span className="eyebrow-line" /> NO RULES · JUST SQL</div><h1>Your sandbox.<br /><em>Your rules.</em></h1><p className="intro">Experiment with real PostgreSQL in your browser. The sample world has players, quests, and completions ready to explore. Write anything, run it, and see what happens.</p><div className="playground-tips"><strong>TRY THESE COMMANDS</strong>{["SELECT * FROM players;", "SELECT realm, COUNT(*) FROM players GROUP BY realm;", "CREATE TABLE loot (id SERIAL PRIMARY KEY, name TEXT);"].map(s => <button key={s} onClick={() => setCode(s)}><code>{s}</code><ArrowRight size={15} /></button>)}</div><div className="concept-card playground-info"><span className="concept-icon"><Info size={20} /></span><div><strong>YOUR BROWSER IS THE SERVER</strong><p>Queries run locally in a fresh PostgreSQL sandbox. Reset restores the sample data. Course progress is saved in this browser.</p></div></div></div><Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} /></div>
+          <div className="content-grid playground-grid"><div className="lesson-content playground-content"><div className="eyebrow"><span className="eyebrow-line" /> NO RULES · JUST SQL</div><h1>Your sandbox.<br /><em>Your rules.</em></h1><p className="intro">Experiment with real PostgreSQL in your browser. The sample world has players, quests, and completions ready to explore. Write anything, run it, and see what happens.</p><a className="mobile-workspace-link" href="#sql-workspace"><Terminal size={18} /> Jump to SQL editor <ArrowRight size={17} /></a><div className="playground-tips"><strong>TRY THESE COMMANDS</strong>{["SELECT * FROM players;", "SELECT realm, COUNT(*) FROM players GROUP BY realm;", "CREATE TABLE loot (id SERIAL PRIMARY KEY, name TEXT);"].map(s => <button key={s} onClick={() => setCode(s)}><code>{s}</code><ArrowRight size={15} /></button>)}</div><div className="concept-card playground-info"><span className="concept-icon"><Info size={20} /></span><div><strong>YOUR BROWSER IS THE SERVER</strong><p>Queries run locally in a fresh PostgreSQL sandbox. Reset restores the sample data. Course progress is saved in this browser.</p></div></div></div><Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} /></div>
         </>}
       </main>
     </div>
@@ -276,7 +277,7 @@ function App() {
 
 function Console({ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }) {
   const lines = code.split('\n').length
-  return <section className="console-wrap" aria-label="SQL workspace">
+  return <section className="console-wrap" id="sql-workspace" aria-label="SQL workspace">
     <div className="console-heading"><div><span className="console-heading-icon"><Terminal size={19} /></span><span><strong>SQL WORKSPACE</strong><small>Write. Run. Learn. Repeat.</small></span></div><span className="engine-badge"><span /> LIVE ENGINE</span></div>
     <div className="console-window">
       <div className="window-bar"><div className="window-dots"><i /><i /><i /></div><span>query_quest.sql</span><div className="window-bar-right"><HardDrive size={13} /> {databaseName} <ChevronDown size={12} /></div></div>

@@ -5,3 +5,50 @@
 .music-toggle{display:flex;align-items:center;gap:8px;min-height:33px;padding:0 9px;border:1px solid #505268;background:#272a3b;border-radius:5px;color:#8e94ab;font:700 10px 'DM Mono',monospace;letter-spacing:.4px;white-space:nowrap;transition:background .2s,border-color .2s,color .2s}.music-toggle:hover{border-color:#9ca58c;color:#d7eec9}.music-toggle.playing{background:#2b3c31;border-color:#75a76b;color:#c7ffae;box-shadow:inset 0 1px #ffffff13}.music-toggle:disabled{opacity:.5}.music-bars{display:flex;align-items:end;gap:2px;height:12px;margin-left:1px}.music-bars i{display:block;width:2px;height:4px;background:currentColor;opacity:.5}.music-bars i:nth-child(2){height:10px}.music-bars i:nth-child(3){height:7px}.music-toggle.playing .music-bars i{opacity:1;animation:music-bounce .6s steps(3,end) infinite alternate}.music-toggle.playing .music-bars i:nth-child(2){animation-delay:.15s}.music-toggle.playing .music-bars i:nth-child(3){animation-delay:.3s}@keyframes music-bounce{to{height:3px}}
 @media(max-width:1280px){.topbar-right{gap:11px}.music-label{display:none}.music-toggle{gap:5px;padding:0 8px}}
 @media(max-width:720px){.topbar-right{gap:7px}.music-toggle{width:31px;min-height:30px;justify-content:center;padding:0}.music-bars{display:none}.avatar{display:none}}
+
+.mobile-workspace-link{display:none}
+
+@media(max-width:720px){
+  .topbar{padding:0 12px;gap:8px}
+  .layout{z-index:auto}
+  .sidebar{background:#171927}
+  .mobile-menu,.music-toggle{display:grid;place-items:center;flex:none;width:44px;min-width:44px;height:44px;min-height:44px;padding:0}
+  .brand{gap:7px;min-width:0}
+  .brand>span{font-size:10px;letter-spacing:-.8px}
+  .brand small{font-size:6px;letter-spacing:.7px}
+  .pixel-mark{margin-right:-6px}
+  .topbar-right{gap:6px}
+  .xp-pill{padding:7px 6px}
+  .main-area{padding:24px 16px 56px}
+  .lesson-content h1{font-size:22px}
+  .intro{font-size:14px;line-height:1.7}
+  .concept-card p,.mission-card>p{font-size:13px}
+  .mobile-workspace-link{display:flex;align-items:center;gap:10px;min-height:46px;width:100%;padding:10px 14px;margin:0 0 28px;border:1px solid #7aa86a;border-radius:6px;background:#26372b;color:#d4ffc5;font-size:13px;font-weight:700;text-decoration:none}
+  .mobile-workspace-link svg:last-child{margin-left:auto}
+  .mobile-workspace-link:focus-visible{outline:2px solid #b8f69d;outline-offset:3px}
+  .lesson-meta{margin-bottom:18px}
+  .sidebar-mobile-head .icon-button{width:44px;height:44px}
+  .lesson-link{min-height:44px;font-size:12px}
+  .sidebar-playground{min-height:50px}
+  .help-row button,.lesson-bottom button,.solution-note button{min-height:44px}
+  .mission-footer{flex-wrap:wrap;gap:8px;line-height:1.5}
+  .console-wrap{scroll-margin-top:16px}
+  .editor-tabs button{min-height:44px;padding:0 14px}
+  .editor-area textarea{font-size:16px;line-height:24px}
+  .line-numbers{font-size:12px;line-height:24px}
+  .editor-toolbar{flex-direction:column;align-items:stretch;gap:8px}
+  .editor-toolbar>span{font-size:10px}
+  .editor-toolbar .shortcut{display:none}
+  .editor-toolbar>div{width:100%;gap:8px}
+  .toolbar-icon{width:44px;height:44px;flex:none}
+  .run-button{min-height:44px;flex:1;font-size:12px}
+  .playground-tips{margin-top:28px}
+  .playground-tips button{min-height:48px}
+}
+
+@media(max-width:380px){
+  .xp-pill{display:none}
+  .brand>span{font-size:9px}
+  .main-area{padding-left:12px;padding-right:12px}
+  .engine-badge{display:none}
+}
