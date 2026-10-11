@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { getLesson, lessons, modules, seedSQL } from './course'
 import { createMusicPlayer } from './chiptune'
+import { lessonPath, pageFromPath, pageMeta, playgroundPath } from './seo'
+import { startAnalytics, trackEvent, trackPageView } from './analytics'
 
 const STORAGE_KEY = 'query-quest-progress-v1'
 
@@ -30,10 +32,11 @@ function PixelMark() {
 }
 
 function App() {
-  const [selectedId, setSelectedId] = useState(lessons[0].id)
-  const [mode, setMode] = useState('course')
+  const [selectedId, setSelectedId] = useState(() => pageFromPath(window.location.pathname).selectedId)
+  const [mode, setMode] = useState(() => pageFromPath(window.location.pathname).mode)
+  const [routePath, setRoutePath] = useState(() => window.location.pathname)
   const [completed, setCompleted] = useState(readProgress)
-  const [code, setCode] = useState(lessons[0].starter)
+  const [code, setCode] = useState(() => getLesson(pageFromPath(window.location.pathname).selectedId).starter)
   const [results, setResults] = useState([])
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
@@ -108,6 +111,36 @@ function App() {
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(completed)) }, [completed])
 
   useEffect(() => {
+    const syncRoute = () => {
+      const page = pageFromPath(window.location.pathname)
+      setSelectedId(page.selectedId)
+      setMode(page.mode)
+      setRoutePath(window.location.pathname)
+    }
+    window.addEventListener('popstate', syncRoute)
+    return () => window.removeEventListener('popstate', syncRoute)
+  }, [])
+
+  useEffect(() => {
+    const { title, description } = pageMeta(mode, selectedId, routePath)
+    document.title = title
+    document.querySelector('meta[name="description"]')?.setAttribute('content', description)
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', title)
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', description)
+    document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', title)
+    document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', description)
+    const canonical = document.querySelector('link[rel="canonical"]')
+    if (canonical) {
+      const url = new URL(canonical.href)
+      url.pathname = routePath
+      canonical.href = url.href
+      document.querySelector('meta[property="og:url"]')?.setAttribute('content', url.href)
+    }
+    startAnalytics()
+    trackPageView(title)
+  }, [mode, selectedId, routePath])
+
+  useEffect(() => {
     if (musicWantedRef.current) {
       try {
         const player = createMusicPlayer()
@@ -144,14 +177,24 @@ function App() {
 
   const selectLesson = (id) => {
     setSidebarOpen(false)
+    if (window.location.pathname !== lessonPath(id)) {
+      window.history.pushState({}, '', lessonPath(id))
+      setRoutePath(lessonPath(id))
+    }
     if (mode === 'course' && selectedId === id) return
     setSelectedId(id)
     setMode('course')
+    window.scrollTo(0, 0)
   }
 
   const showPlayground = () => {
     setSidebarOpen(false)
+    if (window.location.pathname !== playgroundPath) {
+      window.history.pushState({}, '', playgroundPath)
+      setRoutePath(playgroundPath)
+    }
     if (mode !== 'playground') setMode('playground')
+    window.scrollTo(0, 0)
   }
 
   const runQuery = async () => {
@@ -179,12 +222,14 @@ function App() {
         nextResults = await currentDb.exec(code)
       }
       setResults(nextResults)
+      trackEvent('sql_query_run', { area: mode, ...(mode === 'course' ? { lesson_id: lesson.id } : {}) })
       await loadSchema(activeDb)
       if (mode === 'course') {
         let passed = false
         try { passed = await lesson.check({ sql: code, results: nextResults, db: activeDb, databaseName: newName }) } catch { /* Learner may have changed the schema while experimenting. */ }
         if (passed) {
           setFeedback('Mission complete! Your SQL did the job.')
+          if (!completed.includes(lesson.id)) trackEvent('lesson_complete', { lesson_id: lesson.id })
           setCompleted(previous => previous.includes(lesson.id) ? previous : [...previous, lesson.id])
         } else {
           setFeedback('Query ran successfully. Check the mission and try again!')
@@ -213,7 +258,7 @@ function App() {
       <button className="mobile-menu icon-button" onClick={() => setSidebarOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
       <button className="brand" onClick={() => selectLesson(lessons[0].id)} aria-label="Query Quest home"><PixelMark /><span>QUERY<span className="brand-accent">QUEST</span><small>POSTGRESQL ACADEMY</small></span></button>
       <nav className="topnav" aria-label="Main navigation">
-        <button className={mode === 'course' ? 'active' : ''} onClick={() => setMode('course')}><BookOpen size={16} /> Course</button>
+        <button className={mode === 'course' ? 'active' : ''} onClick={() => selectLesson(selectedId)}><BookOpen size={16} /> Course</button>
         <button className={mode === 'playground' ? 'active' : ''} onClick={showPlayground}><Terminal size={16} /> Playground</button>
       </nav>
       <div className="topbar-right"><span className="online"><span /> POSTGRES ONLINE</span><span className="topbar-separator" /><button className={`music-toggle ${musicOn ? 'playing' : ''}`} onClick={toggleMusic} aria-label={musicOn ? 'Mute 8-bit music' : 'Play 8-bit music'} aria-pressed={musicOn} title={musicError || (musicOn ? 'Mute one-minute 8-bit loop' : 'Play one-minute 8-bit loop')}>{musicOn ? <Volume2 size={16} /> : <VolumeX size={16} />}<span className="music-label">SOUND {musicOn ? 'ON' : 'OFF'}</span><span className="music-bars" aria-hidden="true"><i /><i /><i /></span></button><span className="xp-pill"><Zap size={15} fill="currentColor" /> {totalXp} XP</span><span className="avatar">Q</span></div>
@@ -232,7 +277,7 @@ function App() {
               const doneCount = items.filter(l => completed.includes(l.id)).length
               return <section className="module" key={module.id}>
                 <div className="module-head"><span className={`module-number ${module.color}`}>{module.icon}</span><span className="module-copy"><strong>{module.title}</strong><small>{module.subtitle}</small></span><span className="module-count">{doneCount}/{items.length}</span></div>
-                <div className="lesson-links">{items.map((item) => <button key={item.id} className={`lesson-link ${mode === 'course' && selectedId === item.id ? 'selected' : ''}`} onClick={() => selectLesson(item.id)}><span className={`lesson-status ${completed.includes(item.id) ? 'done' : ''}`}>{completed.includes(item.id) ? <Check size={12} strokeWidth={3} /> : String(lessons.indexOf(item) + 1).padStart(2, '0')}</span><span>{item.title}</span>{mode === 'course' && selectedId === item.id && <ChevronRight size={14} />}</button>)}</div>
+                <div className="lesson-links">{items.map((item) => <a key={item.id} href={lessonPath(item.id)} className={`lesson-link ${mode === 'course' && selectedId === item.id ? 'selected' : ''}`} onClick={event => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); selectLesson(item.id) }}><span className={`lesson-status ${completed.includes(item.id) ? 'done' : ''}`}>{completed.includes(item.id) ? <Check size={12} strokeWidth={3} /> : String(lessons.indexOf(item) + 1).padStart(2, '0')}</span><span>{item.title}</span>{mode === 'course' && selectedId === item.id && <ChevronRight size={14} />}</a>)}</div>
               </section>
             })}
           </div>

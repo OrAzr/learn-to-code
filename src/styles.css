@@ -7,6 +7,12 @@
 @media(max-width:720px){.topbar-right{gap:7px}.music-toggle{width:31px;min-height:30px;justify-content:center;padding:0}.music-bars{display:none}.avatar{display:none}}
 
 .mobile-workspace-link{display:none}
+.lesson-link{text-decoration:none}
+.seo-fallback{max-width:760px;margin:0 auto;padding:48px 24px 80px;color:#eef0f8;font:16px/1.7 Inter,system-ui,sans-serif}
+.seo-fallback h1{color:#b8fa9c;font-size:clamp(28px,5vw,42px);line-height:1.2}
+.seo-fallback h2{font-size:21px;margin-top:32px}
+.seo-fallback a{color:#b8fa9c}
+.seo-fallback li{margin:5px 0}
 
 @media(max-width:720px){
   .topbar{padding:0 12px;gap:8px}
