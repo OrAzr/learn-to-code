@@ -1,7 +1,7 @@
 import { getLesson, lessons } from './course.js'
 
-export const homeTitle = 'Query Quest — Learn PostgreSQL by Doing'
-export const homeDescription = 'Learn PostgreSQL with 16 hands-on SQL lessons. Write real queries in your browser, explore tables and joins, and practice at your own pace.'
+export const homeTitle = 'Learn SQL Interactively — Free PostgreSQL Course with Hands-On Lessons'
+export const homeDescription = 'Master SQL with 16 interactive lessons. Write real queries in your browser, practice PostgreSQL, and learn database fundamentals—no setup required. Free SQL tutorial for beginners.'
 export const playgroundPath = '/playground/'
 export const lessonPath = id => `/lessons/${id}/`
 
@@ -13,10 +13,10 @@ export function pageFromPath(pathname) {
 
 export function pageMeta(mode, id, pathname = '') {
   if (mode === 'playground') {
-    return { title: 'SQL Playground — Query Quest', description: 'Practice PostgreSQL in your browser with a free SQL playground and sample data.', path: playgroundPath }
+    return { title: 'Free SQL Playground — Practice PostgreSQL Online', description: 'Practice SQL and PostgreSQL in your browser. Free interactive SQL playground with sample data. Learn by doing with real queries.', path: playgroundPath }
   }
   if (pathname === '/') return { title: homeTitle, description: homeDescription, path: '/' }
   const lesson = getLesson(id)
   const description = lesson.intro.length > 155 ? `${lesson.intro.slice(0, 152).replace(/\s+\S*$/, '')}…` : lesson.intro
-  return { title: `${lesson.title} — Query Quest PostgreSQL Course`, description, path: lessonPath(lesson.id) }
+  return { title: `${lesson.title} — Learn SQL Step by Step`, description, path: lessonPath(lesson.id) }
 }
