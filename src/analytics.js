@@ -6,7 +6,9 @@ export function startAnalytics() {
   if (!analyticsAvailable || active) return false
   active = true
   window.dataLayer = window.dataLayer || []
-  window.gtag = function () { window.dataLayer.push(arguments) }
+  window.gtag = function () {
+    if (window.dataLayer) window.dataLayer.push(arguments)
+  }
   window.gtag('js', new Date())
   window.gtag('config', measurementId, { send_page_view: false })
   const script = document.createElement('script')
