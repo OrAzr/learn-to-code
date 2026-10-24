@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { loadEnv } from 'vite'
 import { lessons } from '../src/course.js'
-import { homeDescription, homeTitle, lessonPath, pageMeta } from '../src/seo.js'
+import { homeDescription, homeTitle, lessonPath, ogImagePath, pageMeta, structuredData } from '../src/seo.js'
 
 const siteUrl = (process.env.SITE_URL || loadEnv('production', process.cwd(), '').SITE_URL)?.trim()
 let origin = ''
@@ -16,16 +16,17 @@ if (siteUrl) {
 }
 
 const escapeHtml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+const jsonLd = data => `<script type="application/ld+json" id="structured-data">\n${JSON.stringify(data, null, 2).replaceAll('<', '\\u003c')}\n    </script>`
 const template = await readFile('dist/index.html', 'utf8')
 const pages = [
-  { path: '/', title: homeTitle, description: homeDescription, content: `
+  { path: '/', mode: 'course', id: lessons[0].id, title: homeTitle, description: homeDescription, content: `
     <h1>Learn PostgreSQL by doing</h1>
     <p>Query Quest is a free, interactive PostgreSQL course with 16 hands-on lessons and a SQL playground that runs in your browser.</p>
     <h2>Explore the lessons</h2>
     <ol>${lessons.map(lesson => `<li><a href="${lessonPath(lesson.id)}">${escapeHtml(lesson.title)}</a></li>`).join('')}</ol>` },
   ...lessons.map(lesson => {
     const meta = pageMeta('course', lesson.id, lessonPath(lesson.id))
-    return { ...meta, content: `
+    return { ...meta, mode: 'course', id: lesson.id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
     <h1>${escapeHtml(lesson.title)}</h1>
     <p>${escapeHtml(lesson.intro)}</p>
@@ -35,11 +36,49 @@ const pages = [
     <p>${escapeHtml(lesson.mission)}</p>
     <p>Enable JavaScript to run SQL in the interactive lesson.</p>` }
   }),
-  { ...pageMeta('playground', lessons[0].id), content: `
+  { ...pageMeta('playground', lessons[0].id), mode: 'playground', id: lessons[0].id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
     <h1>Free PostgreSQL playground</h1>
     <p>Write and run PostgreSQL queries in your browser. Explore sample players, quests, and completions.</p>` },
 ]
+
+const seenTitles = new Set()
+const seenDescriptions = new Set()
+const assertPage = (page, html) => {
+  if (page.title.length < 50 || page.title.length > 60) throw new Error(`Title length ${page.title.length} for ${page.path}: ${page.title}`)
+  if (page.description.length < 140 || page.description.length > 160) throw new Error(`Description length ${page.description.length} for ${page.path}: ${page.description}`)
+  if (seenTitles.has(page.title) || seenDescriptions.has(page.description)) throw new Error(`Duplicate title or description for ${page.path}`)
+  seenTitles.add(page.title)
+  seenDescriptions.add(page.description)
+  const json = html.match(/<script type="application\/ld\+json" id="structured-data">([\s\S]*?)<\/script>/)?.[1]
+  const data = JSON.parse(json)
+  const image = `${origin}${ogImagePath}`
+  for (const needle of [
+    `property="og:image" content="${image}"`,
+    'property="og:image:width" content="1200"',
+    'property="og:image:height" content="630"',
+    'property="og:image:alt" content="',
+    'name="twitter:card" content="summary_large_image"',
+    `name="twitter:image" content="${image}"`,
+    'name="twitter:image:alt" content="',
+  ]) if (!html.includes(needle)) throw new Error(`${page.path} is missing ${needle}`)
+  if (page.path === '/') {
+    if (data['@type'] !== 'Course' || data.isAccessibleForFree !== true) throw new Error('Homepage JSON-LD must be a free Course')
+    if (data.offers?.['@type'] !== 'Offer' || data.offers.price !== '0' || data.offers.priceCurrency !== 'USD') throw new Error('Homepage JSON-LD needs a free Offer')
+    if (data.provider?.['@type'] !== 'Organization' || data.provider.name !== 'Query Quest') throw new Error('Homepage JSON-LD needs an Organization provider')
+    if (data.hasCourseInstance?.['@type'] !== 'CourseInstance' || data.hasCourseInstance.courseMode !== 'online' || !data.hasCourseInstance.courseWorkload) throw new Error('Homepage JSON-LD needs an online CourseInstance')
+    return
+  }
+  const types = data['@graph']?.map(node => node['@type']) ?? []
+  const crumbs = data['@graph']?.find(node => node['@type'] === 'BreadcrumbList')?.itemListElement
+  if (crumbs?.length !== 2 || crumbs[0].name !== 'Home' || crumbs.some(crumb => !crumb.item || !crumb.position)) throw new Error(`BreadcrumbList is incomplete for ${page.path}`)
+  if (page.path === '/playground/') {
+    if (types[0] !== 'WebApplication' || !types.includes('BreadcrumbList')) throw new Error('Playground JSON-LD must be a WebApplication with a breadcrumb')
+    return
+  }
+  const resource = data['@graph']?.[0]
+  if (resource?.['@type'] !== 'LearningResource' || resource.isPartOf?.['@type'] !== 'Course' || !resource.isPartOf.url) throw new Error(`Lesson JSON-LD must be a LearningResource in the course for ${page.path}`)
+}
 
 for (const page of pages) {
   const escapedTitle = escapeHtml(page.title)
@@ -52,8 +91,12 @@ for (const page of pages) {
     .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${escapedDescription}" />`)
     .replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${escapedTitle}" />`)
     .replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${escapedDescription}" />`)
+    .replace(/<script type="application\/ld\+json" id="structured-data">[\s\S]*?<\/script>/, jsonLd(structuredData(page.mode, page.id, page.path, origin)))
     .replace('<div id="root"></div>', `<div id="root"><main class="seo-fallback">${page.content}\n    </main></div>`)
+  if (origin) html = html.replaceAll(`content="${ogImagePath}"`, `content="${origin}${ogImagePath}"`)
   if (canonical) html = html.replace('  </head>', `    <link rel="canonical" href="${canonical}" />\n    <meta property="og:url" content="${canonical}" />\n  </head>`)
+  if (!html.includes('id="structured-data"') || html.includes('<div id="root"></div>')) throw new Error(`Failed to write head metadata for ${page.path}`)
+  assertPage(page, html)
   const file = page.path === '/' ? 'dist/index.html' : `dist${page.path}index.html`
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, html)
@@ -65,3 +108,6 @@ if (origin) {
 }
 
 await writeFile('dist/robots.txt', `User-agent: *\nAllow: /\n${origin ? `Sitemap: ${origin}/sitemap.xml\n` : ''}`)
+
+const image = await readFile(`dist${ogImagePath}`)
+if (image.readUInt32BE(16) !== 1200 || image.readUInt32BE(20) !== 630) throw new Error('og:image must be 1200 by 630 pixels')

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { getLesson, lessons, modules, seedSQL } from './course'
 import { createMusicPlayer } from './chiptune'
-import { lessonPath, pageFromPath, pageMeta, playgroundPath } from './seo'
+import { lessonPath, pageFromPath, pageMeta, playgroundPath, structuredData } from './seo'
 import { startAnalytics, trackEvent, trackPageView } from './analytics'
 
 const STORAGE_KEY = 'query-quest-progress-v1'
@@ -129,6 +129,8 @@ function App() {
     document.querySelector('meta[property="og:description"]')?.setAttribute('content', description)
     document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', title)
     document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', description)
+    const structuredDataScript = document.getElementById('structured-data')
+    if (structuredDataScript) structuredDataScript.textContent = JSON.stringify(structuredData(mode, selectedId, routePath, window.location.origin))
     const canonical = document.querySelector('link[rel="canonical"]')
     if (canonical) {
       const url = new URL(canonical.href)
