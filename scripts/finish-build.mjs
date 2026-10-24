@@ -2,6 +2,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { loadEnv } from 'vite'
 import { lessons } from '../src/course.js'
+import { deepDiveWordCount, lessonPagerHtml, renderDeepDiveHtml } from '../src/deep-dive-html.js'
+import { getDeepDive, listDeepDives } from '../src/deep-dives/index.js'
+import { verifyDeepDiveExamples } from '../src/deep-dives/verify.js'
 import { homeDescription, homeTitle, lessonPath, ogImagePath, pageMeta, structuredData } from '../src/seo.js'
 
 const siteUrl = (process.env.SITE_URL || loadEnv('production', process.cwd(), '').SITE_URL)?.trim()
@@ -15,6 +18,12 @@ if (siteUrl) {
   origin = url.origin
 }
 
+for (const dive of listDeepDives()) {
+  const words = deepDiveWordCount(dive)
+  if (words < 700 || words > 1000) throw new Error(`Deep dive for ${dive.lessonId} is ${words} words; expected 700 to 1000`)
+}
+await verifyDeepDiveExamples()
+
 const escapeHtml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 const jsonLd = data => `<script type="application/ld+json" id="structured-data">\n${JSON.stringify(data, null, 2).replaceAll('<', '\\u003c')}\n    </script>`
 const template = await readFile('dist/index.html', 'utf8')
@@ -24,8 +33,9 @@ const pages = [
     <p>Query Quest is a free, interactive PostgreSQL course with 16 hands-on lessons and a SQL playground that runs in your browser.</p>
     <h2>Explore the lessons</h2>
     <ol>${lessons.map(lesson => `<li><a href="${lessonPath(lesson.id)}">${escapeHtml(lesson.title)}</a></li>`).join('')}</ol>` },
-  ...lessons.map(lesson => {
+  ...lessons.map((lesson, index) => {
     const meta = pageMeta('course', lesson.id, lessonPath(lesson.id))
+    const dive = getDeepDive(lesson.id)
     return { ...meta, mode: 'course', id: lesson.id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
     <h1>${escapeHtml(lesson.title)}</h1>
@@ -34,7 +44,9 @@ const pages = [
     <p>${escapeHtml(lesson.concept)}</p>
     <h2>Your mission</h2>
     <p>${escapeHtml(lesson.mission)}</p>
-    <p>Enable JavaScript to run SQL in the interactive lesson.</p>` }
+    <p>Enable JavaScript to run SQL in the interactive lesson.</p>
+    ${dive ? renderDeepDiveHtml(dive) : ''}
+    ${lessonPagerHtml(lessons[index - 1], lessons[index + 1])}` }
   }),
   { ...pageMeta('playground', lessons[0].id), mode: 'playground', id: lessons[0].id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
@@ -78,7 +90,28 @@ const assertPage = (page, html) => {
   }
   const resource = data['@graph']?.[0]
   if (resource?.['@type'] !== 'LearningResource' || resource.isPartOf?.['@type'] !== 'Course' || !resource.isPartOf.url) throw new Error(`Lesson JSON-LD must be a LearningResource in the course for ${page.path}`)
+  const dive = getDeepDive(page.id)
+  const faq = data['@graph']?.find(node => node['@type'] === 'FAQPage')
+  if (!html.includes('class="lesson-pager"')) throw new Error(`Missing previous/next links for ${page.path}`)
+  if (!dive) {
+    if (faq || html.includes('class="deep-dive"')) throw new Error(`Unexpected deep dive on ${page.path}`)
+    return
+  }
+  const missionAt = html.indexOf(escapeHtml(getLessonMission(page.id)))
+  const diveAt = html.indexOf('id="deep-dive"')
+  if (missionAt < 0 || diveAt < missionAt) throw new Error(`Deep dive must follow the mission on ${page.path}`)
+  if (!html.includes('Last updated') || !html.includes('deep-dive-toc') || !html.includes('deep-dive-reading')) throw new Error(`Deep dive section is incomplete for ${page.path}`)
+  if (!faq || faq.mainEntity?.length !== dive.faqs.length) throw new Error(`FAQPage JSON-LD missing for ${page.path}`)
+  dive.faqs.forEach((item, index) => {
+    const node = faq.mainEntity[index]
+    if (node?.['@type'] !== 'Question' || node.name !== item.question || node.acceptedAnswer?.['@type'] !== 'Answer' || node.acceptedAnswer.text !== item.answer) {
+      throw new Error(`FAQ JSON-LD does not match the visible answer for ${page.path}`)
+    }
+    if (!html.includes(escapeHtml(item.question)) || !html.includes(escapeHtml(item.answer))) throw new Error(`FAQ text missing from static HTML for ${page.path}`)
+  })
 }
+
+const getLessonMission = id => lessons.find(lesson => lesson.id === id).mission
 
 for (const page of pages) {
   const escapedTitle = escapeHtml(page.title)

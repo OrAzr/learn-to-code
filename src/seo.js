@@ -1,4 +1,5 @@
 import { getLesson, lessons } from './course.js'
+import { getDeepDive } from './deep-dives/index.js'
 
 export const homeTitle = 'Free Beginner SQL Course: Interactive PostgreSQL Lessons'
 export const homeDescription = 'A free beginner SQL course with 16 hands-on interactive lessons. Practice real PostgreSQL queries in your browser, with no setup and no signup.'
@@ -174,24 +175,34 @@ export function structuredData(mode, id, pathname, origin = '') {
   }
   const lesson = getLesson(id)
   const meta = pageMeta('course', lesson.id, lessonPath(lesson.id))
-  return {
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'LearningResource',
-        name: meta.title,
-        description: meta.description,
-        url: absolute(origin, meta.path),
-        learningResourceType: 'Interactive lesson',
-        educationalLevel: 'Beginner',
-        isAccessibleForFree: true,
-        inLanguage: 'en',
-        timeRequired: `PT${Number.parseInt(lesson.duration, 10)}M`,
-        teaches: lesson.concept,
-        isPartOf: courseRef,
-        provider: provider(origin),
-      },
-      breadcrumb(origin, [['Home', '/'], [lesson.title, meta.path]]),
-    ],
+  const graph = [
+    {
+      '@type': 'LearningResource',
+      name: meta.title,
+      description: meta.description,
+      url: absolute(origin, meta.path),
+      learningResourceType: 'Interactive lesson',
+      educationalLevel: 'Beginner',
+      isAccessibleForFree: true,
+      inLanguage: 'en',
+      timeRequired: `PT${Number.parseInt(lesson.duration, 10)}M`,
+      teaches: lesson.concept,
+      isPartOf: courseRef,
+      provider: provider(origin),
+    },
+    breadcrumb(origin, [['Home', '/'], [lesson.title, meta.path]]),
+  ]
+  const dive = getDeepDive(lesson.id)
+  if (dive) {
+    graph.push({
+      '@type': 'FAQPage',
+      url: `${absolute(origin, meta.path)}#deep-dive-faq`,
+      mainEntity: dive.faqs.map(faq => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })),
+    })
   }
+  return { '@context': 'https://schema.org', '@graph': graph }
 }

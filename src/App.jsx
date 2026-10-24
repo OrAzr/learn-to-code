@@ -6,6 +6,8 @@ import {
   Menu, Play, RotateCcw, Sparkles, Table2, Terminal, Volume2, VolumeX, X, Zap,
 } from 'lucide-react'
 import { getLesson, lessons, modules, seedSQL } from './course'
+import { DeepDive, LessonPager } from './DeepDive'
+import { getDeepDive } from './deep-dives/index.js'
 import { createMusicPlayer } from './chiptune'
 import { lessonPath, pageFromPath, pageMeta, playgroundPath, structuredData } from './seo'
 import { startAnalytics, trackEvent, trackPageView } from './analytics'
@@ -253,6 +255,8 @@ function App() {
   const resultColumns = displayResult?.fields?.map(f => f.name) || (displayResult?.rows?.[0] ? Object.keys(displayResult.rows[0]) : [])
   const affected = results.reduce((sum, r) => sum + (r.affectedRows || 0), 0)
   const won = completed.includes(lesson.id)
+  const previousLesson = lessonIndex > 0 ? lessons[lessonIndex - 1] : null
+  const nextLesson = lessonIndex + 1 < lessons.length ? lessons[lessonIndex + 1] : null
 
   return <div className="app-shell">
     <div className="ambient ambient-one" /><div className="ambient ambient-two" />
@@ -313,6 +317,8 @@ function App() {
             </div>
             <Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} />
           </div>
+          <DeepDive dive={getDeepDive(lesson.id)} />
+          <LessonPager previous={previousLesson} next={nextLesson} onSelect={selectLesson} />
         </> : <>
           <div className="breadcrumb"><span>QUERY QUEST</span><ChevronRight size={13} /><strong>FREE PLAYGROUND</strong></div>
           <div className="content-grid playground-grid"><div className="lesson-content playground-content"><div className="eyebrow"><span className="eyebrow-line" /> NO RULES · JUST SQL</div><h1>Your sandbox.<br /><em>Your rules.</em></h1><p className="intro">Experiment with real PostgreSQL in your browser. The sample world has players, quests, and completions ready to explore. Write anything, run it, and see what happens.</p><a className="mobile-workspace-link" href="#sql-workspace"><Terminal size={18} /> Jump to SQL editor <ArrowRight size={17} /></a><div className="playground-tips"><strong>TRY THESE COMMANDS</strong>{["SELECT * FROM players;", "SELECT realm, COUNT(*) FROM players GROUP BY realm;", "CREATE TABLE loot (id SERIAL PRIMARY KEY, name TEXT);"].map(s => <button key={s} onClick={() => setCode(s)}><code>{s}</code><ArrowRight size={15} /></button>)}</div><div className="concept-card playground-info"><span className="concept-icon"><Info size={20} /></span><div><strong>YOUR BROWSER IS THE SERVER</strong><p>Queries run locally in a fresh PostgreSQL sandbox. Reset restores the sample data. Course progress is saved in this browser.</p></div></div></div><Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} /></div>

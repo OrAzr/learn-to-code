@@ -58,3 +58,47 @@
   .main-area{padding-left:12px;padding-right:12px}
   .engine-badge{display:none}
 }
+
+.deep-dive-mount{min-width:0;max-width:760px}
+.deep-dive{margin-top:48px;padding-top:28px;border-top:1px solid #ffffff16;color:#c5c8d8;font-size:16px;line-height:1.7}
+.deep-dive-kicker{margin:0 0 8px;color:#b8f69d;font:500 11px/1 'DM Mono',monospace;letter-spacing:1.8px;text-transform:uppercase}
+.deep-dive-updated{margin:0 0 18px;color:#8b91a6;font:500 12px/1.4 'DM Mono',monospace}
+.deep-dive h2,.deep-dive h3{font-family:Inter,system-ui,sans-serif;color:#f5f3fd;font-weight:700;letter-spacing:-.02em;scroll-margin-top:16px}
+.deep-dive h2{margin:34px 0 12px;font-size:22px;line-height:1.35}
+.deep-dive h3{margin:26px 0 10px;font-size:18px;line-height:1.4}
+.deep-dive p{margin:0 0 14px}
+.deep-dive a{color:#c8f7b4}
+.deep-dive a:hover{color:#e7ffd8}
+.deep-dive ul{margin:0 0 16px;padding-left:1.2em}
+.deep-dive li{margin:7px 0}
+.deep-dive-toc{margin:0 0 8px;padding:14px 16px 12px;border:1px solid #3d4057;border-radius:7px;background:#1c1f30}
+.deep-dive-toc>p{margin:0 0 8px;color:#9aa0b8;font:500 10px/1.2 'DM Mono',monospace;letter-spacing:1.2px;text-transform:uppercase}
+.deep-dive-toc ol{margin:0;padding-left:1.25em}
+.deep-dive-toc a{font-size:14px;font-weight:600;text-decoration:none}
+.deep-dive-toc a:hover{text-decoration:underline}
+.deep-dive-code,.deep-dive-plan{margin:0 0 8px;padding:14px 16px;max-width:100%;overflow-x:auto;border:1px solid #3a3d55;border-radius:5px;background:#191c2c;color:#d0c1ff;font:12.5px/1.65 'DM Mono',monospace;-webkit-overflow-scrolling:touch}
+.deep-dive-code code,.deep-dive-plan code{display:block;font:inherit;white-space:pre}
+.deep-dive-caption{margin:0 0 16px;color:#8e95ab;font-size:13px;line-height:1.5}
+.deep-dive-table-scroll{max-width:100%;margin:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.deep-dive table{width:100%;min-width:520px;border-collapse:collapse;font-size:14px;line-height:1.45}
+.deep-dive th,.deep-dive td{padding:8px 10px;border-bottom:1px solid #ffffff14;text-align:left;vertical-align:top}
+.deep-dive th{color:#c6e5af;font-size:12px;font-weight:600}
+.deep-dive-answer{margin:0 0 8px;padding:16px 18px 4px;border:1px solid #3d4057;border-radius:7px;background:#232636;box-shadow:4px 4px 0 #0b0c16}
+.deep-dive-label{margin:0 0 8px;color:#b8f69d;font:500 10px/1.2 'DM Mono',monospace;letter-spacing:1.2px;text-transform:uppercase}
+.deep-dive-reading a{font-weight:600}
+.lesson-pager{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:760px;margin-top:28px}
+.lesson-pager a{display:flex;flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:14px 16px;border:1px solid #3d4057;border-radius:7px;background:#232636;box-shadow:4px 4px 0 #0b0c16;color:#f4f6fb;text-decoration:none}
+.lesson-pager a:hover{border-color:#8ea884}
+.lesson-pager-prev{grid-column:1}
+.lesson-pager-next{grid-column:2;text-align:right}
+.lesson-pager span{color:#b8f69d;font:500 10px/1.2 'DM Mono',monospace;letter-spacing:1.1px;text-transform:uppercase}
+.lesson-pager strong{font-size:15px;font-weight:700;line-height:1.35}
+.deep-dive a:focus-visible,.lesson-pager a:focus-visible{outline:2px solid #b8f69d;outline-offset:3px}
+
+@media(max-width:720px){
+  .deep-dive{margin-top:36px;font-size:15px}
+  .deep-dive h2{font-size:20px}
+  .deep-dive h3{font-size:17px}
+  .lesson-pager{grid-template-columns:1fr}
+  .lesson-pager-prev,.lesson-pager-next{grid-column:auto;text-align:left}
+}
