@@ -6,11 +6,22 @@ import {
   Menu, Play, RotateCcw, Sparkles, Table2, Terminal, Volume2, VolumeX, X, Zap,
 } from 'lucide-react'
 import { getLesson, lessons, modules, seedSQL } from './course'
+import { HintList, WhyThisWorks } from './Coach'
+import { LessonPager } from './DeepDive'
+import { explainFailure, getDeepDive } from './deep-dives/index.js'
 import { createMusicPlayer } from './chiptune'
 import { lessonPath, pageFromPath, pageMeta, playgroundPath, structuredData } from './seo'
 import { startAnalytics, trackEvent, trackPageView } from './analytics'
 
 const STORAGE_KEY = 'query-quest-progress-v1'
+const COACH_IDLE_MS = 45000
+
+function resultShape(results) {
+  const display = [...(results || [])].reverse().find(result => result.rows?.length || result.fields?.length)
+  const rows = display?.rows || []
+  const fields = display?.fields?.map(field => field.name) || (rows[0] ? Object.keys(rows[0]) : [])
+  return { rows, fields }
+}
 
 function readProgress() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
@@ -46,6 +57,10 @@ function App() {
   const [schema, setSchema] = useState([])
   const [tab, setTab] = useState('editor')
   const [hintOpen, setHintOpen] = useState(false)
+  const [hintTier, setHintTier] = useState(0)
+  const [hintNudge, setHintNudge] = useState(false)
+  const [coachNote, setCoachNote] = useState('')
+  const [justWon, setJustWon] = useState(false)
   const [solutionOpen, setSolutionOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -55,7 +70,10 @@ function App() {
   const musicRef = useRef(null)
   const musicWantedRef = useRef(musicOn)
   const generationRef = useRef(0)
+  const failCountRef = useRef(0)
   const lesson = getLesson(selectedId)
+  const coach = mode === 'course' ? getDeepDive(lesson.id) : null
+  const won = mode === 'course' && completed.includes(lesson.id)
   const lessonIndex = lessons.findIndex(l => l.id === selectedId)
   const totalXp = lessons.filter(l => completed.includes(l.id)).reduce((sum, l) => sum + l.xp, 0)
   const progress = Math.round(completed.length / lessons.length * 100)
@@ -83,6 +101,11 @@ function App() {
     setError('')
     setFeedback('')
     setHintOpen(false)
+    setHintTier(0)
+    setHintNudge(false)
+    setCoachNote('')
+    setJustWon(false)
+    failCountRef.current = 0
     setSolutionOpen(false)
     setTab('editor')
     setDatabaseName('quest_db')
@@ -109,6 +132,17 @@ function App() {
   }, [selectedId, mode, boot])
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(completed)) }, [completed])
+
+  useEffect(() => {
+    if (!coach || won || hintOpen) return undefined
+    const timer = window.setTimeout(() => setHintNudge(true), COACH_IDLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [coach, won, hintOpen, code, selectedId])
+
+  useEffect(() => {
+    if (!justWon) return
+    document.getElementById('why-this-works')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [justWon])
 
   useEffect(() => {
     const syncRoute = () => {
@@ -199,11 +233,20 @@ function App() {
     window.scrollTo(0, 0)
   }
 
+  const noteMiss = (sql, errorMessage, nextResults) => {
+    if (!coach || completed.includes(lesson.id)) return
+    const { rows, fields } = resultShape(nextResults)
+    setCoachNote(explainFailure(coach, { sql, error: errorMessage || '', rows, fields }))
+    failCountRef.current += 1
+    if (failCountRef.current >= 2) setHintNudge(true)
+  }
+
   const runQuery = async () => {
     if (loading || running || !code.trim() || !dbRef.current) return
     setRunning(true)
     setError('')
     setFeedback('')
+    setCoachNote('')
     const currentDb = dbRef.current
     try {
       const runnableCode = code.replace(/--[^\n]*/g, '').trim()
@@ -231,19 +274,50 @@ function App() {
         try { passed = await lesson.check({ sql: code, results: nextResults, db: activeDb, databaseName: newName }) } catch { /* Learner may have changed the schema while experimenting. */ }
         if (passed) {
           setFeedback('Mission complete! Your SQL did the job.')
-          if (!completed.includes(lesson.id)) trackEvent('lesson_complete', { lesson_id: lesson.id })
+          setCoachNote('')
+          setHintNudge(false)
+          if (!completed.includes(lesson.id)) {
+            trackEvent('lesson_complete', { lesson_id: lesson.id })
+            setJustWon(true)
+          }
           setCompleted(previous => previous.includes(lesson.id) ? previous : [...previous, lesson.id])
         } else {
           setFeedback('Query ran successfully. Check the mission and try again!')
+          noteMiss(code, '', nextResults)
         }
       } else {
         setFeedback('Query executed successfully.')
       }
     } catch (err) {
-      setError(runtimeErrorMessage(err))
+      const message = runtimeErrorMessage(err)
+      setError(message)
       setResults([])
+      if (mode === 'course') noteMiss(code, message, [])
     } finally { setRunning(false) }
   }
+
+  const askForHint = () => {
+    setHintNudge(false)
+    if (!coach) {
+      setHintOpen(open => !open)
+      return
+    }
+    if (!hintOpen) {
+      setHintOpen(true)
+      setHintTier(tier => Math.max(tier, 1))
+      return
+    }
+    if (hintTier < coach.hints.length) {
+      setHintTier(tier => tier + 1)
+      return
+    }
+    setHintOpen(false)
+  }
+
+  const hintsRemain = Boolean(coach && hintTier < coach.hints.length)
+  const hintLabel = !coach
+    ? (hintOpen ? 'Hide hint' : 'Need a hint?')
+    : (!hintOpen ? 'Need a hint?' : hintsRemain ? 'Next hint' : 'Hide hints')
 
   const copyCode = async () => {
     try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard may be unavailable */ }
@@ -252,7 +326,8 @@ function App() {
   const displayResult = [...results].reverse().find(r => r.rows?.length || r.fields?.length)
   const resultColumns = displayResult?.fields?.map(f => f.name) || (displayResult?.rows?.[0] ? Object.keys(displayResult.rows[0]) : [])
   const affected = results.reduce((sum, r) => sum + (r.affectedRows || 0), 0)
-  const won = completed.includes(lesson.id)
+  const previousLesson = lessonIndex > 0 ? lessons[lessonIndex - 1] : null
+  const nextLesson = lessonIndex + 1 < lessons.length ? lessons[lessonIndex + 1] : null
 
   return <div className="app-shell">
     <div className="ambient ambient-one" /><div className="ambient ambient-two" />
@@ -305,14 +380,18 @@ function App() {
 
               <div className="mission-card"><div className="mission-header"><span className="mission-icon"><Sparkles size={19} /></span><div><small>YOUR MISSION</small><strong>{lesson.title}</strong></div><span className="mission-xp">+{lesson.xp} XP</span></div><p>{lesson.mission}</p><div className="mission-footer"><span>{won ? <><CheckCircle2 size={16} /> COMPLETED</> : <><span className="mission-pulse" /> READY WHEN YOU ARE</>}</span><span>↓ WRITE SQL IN THE EDITOR</span></div></div>
 
-              <div className="help-row"><button onClick={() => setHintOpen(!hintOpen)}><Lightbulb size={16} /> {hintOpen ? 'Hide hint' : 'Need a hint?'} <ChevronDown size={15} className={hintOpen ? 'rotated' : ''} /></button><button onClick={() => setSolutionOpen(!solutionOpen)}>{solutionOpen ? <EyeOff size={16} /> : <Eye size={16} />} {solutionOpen ? 'Hide solution' : 'Show solution'}</button></div>
-              {hintOpen && <div className="help-note"><Lightbulb size={17} />{lesson.hint}</div>}
+              <div className="help-row"><button type="button" onClick={askForHint} aria-expanded={hintOpen}><Lightbulb size={16} /> {hintLabel} <ChevronDown size={15} className={hintOpen ? 'rotated' : ''} /></button><button type="button" onClick={() => setSolutionOpen(!solutionOpen)}>{solutionOpen ? <EyeOff size={16} /> : <Eye size={16} />} {solutionOpen ? 'Hide solution' : 'Show solution'}</button></div>
+              {hintNudge && !hintOpen && <p className="hint-nudge">Stuck? Open a hint when you want one. It stays hidden until you ask.</p>}
+              {coach && hintOpen && <div className="hint-panel"><HintList hints={coach.hints.slice(0, hintTier)} />{hintTier < coach.hints.length && <button type="button" className="hint-collapse" onClick={askForHint}>Next hint</button>}<button type="button" className="hint-collapse" onClick={() => setHintOpen(false)}>Hide hints</button></div>}
+              {!coach && hintOpen && <div className="help-note"><Lightbulb size={17} />{lesson.hint}</div>}
               {solutionOpen && <div className="solution-note"><span>SOLUTION</span><code>{lesson.solution}</code><button onClick={() => setCode(lesson.solution)}>Use in editor <ArrowRight size={14} /></button></div>}
 
               <div className="lesson-bottom"><span>LEVEL {String(lessonIndex + 1).padStart(2, '0')} OF {lessons.length}</span><button disabled={lessonIndex === lessons.length - 1} onClick={() => selectLesson(lessons[lessonIndex + 1].id)}>{won ? 'Next level' : 'Skip to next'} <ArrowRight size={17} /></button></div>
             </div>
-            <Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} />
+            <Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, coachNote, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} />
           </div>
+          {won && coach && <WhyThisWorks coach={coach} onTry={sql => { setCode(sql); document.getElementById('sql-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />}
+          <LessonPager previous={previousLesson} next={nextLesson} onSelect={selectLesson} />
         </> : <>
           <div className="breadcrumb"><span>QUERY QUEST</span><ChevronRight size={13} /><strong>FREE PLAYGROUND</strong></div>
           <div className="content-grid playground-grid"><div className="lesson-content playground-content"><div className="eyebrow"><span className="eyebrow-line" /> NO RULES · JUST SQL</div><h1>Your sandbox.<br /><em>Your rules.</em></h1><p className="intro">Experiment with real PostgreSQL in your browser. The sample world has players, quests, and completions ready to explore. Write anything, run it, and see what happens.</p><a className="mobile-workspace-link" href="#sql-workspace"><Terminal size={18} /> Jump to SQL editor <ArrowRight size={17} /></a><div className="playground-tips"><strong>TRY THESE COMMANDS</strong>{["SELECT * FROM players;", "SELECT realm, COUNT(*) FROM players GROUP BY realm;", "CREATE TABLE loot (id SERIAL PRIMARY KEY, name TEXT);"].map(s => <button key={s} onClick={() => setCode(s)}><code>{s}</code><ArrowRight size={15} /></button>)}</div><div className="concept-card playground-info"><span className="concept-icon"><Info size={20} /></span><div><strong>YOUR BROWSER IS THE SERVER</strong><p>Queries run locally in a fresh PostgreSQL sandbox. Reset restores the sample data. Course progress is saved in this browser.</p></div></div></div><Console {...{ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }} /></div>
@@ -322,7 +401,7 @@ function App() {
   </div>
 }
 
-function Console({ code, setCode, results, displayResult, resultColumns, affected, error, feedback, loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }) {
+function Console({ code, setCode, results, displayResult, resultColumns, affected, error, feedback, coachNote = '', loading, running, databaseName, schema, tab, setTab, runQuery, boot, selectedId, mode, copyCode, copied }) {
   const lines = code.split('\n').length
   return <section className="console-wrap" id="sql-workspace" aria-label="SQL workspace">
     <div className="console-heading"><div><span className="console-heading-icon"><Terminal size={19} /></span><span><strong>SQL WORKSPACE</strong><small>Write. Run. Learn. Repeat.</small></span></div><span className="engine-badge"><span /> LIVE ENGINE</span></div>
@@ -333,6 +412,7 @@ function Console({ code, setCode, results, displayResult, resultColumns, affecte
       <div className="editor-toolbar"><span>{loading ? 'BOOTING POSTGRESQL...' : 'POSTGRESQL · READY'} <span className="shortcut">⌘ / CTRL + ENTER TO RUN</span></span><div><button className="toolbar-icon" onClick={copyCode} title="Copy SQL" aria-label="Copy SQL">{copied ? <Check size={16} /> : <Copy size={16} />}</button><button className="toolbar-icon" onClick={() => boot(selectedId, mode)} title="Reset database" aria-label="Reset database"><RotateCcw size={16} /></button><button className="run-button" onClick={runQuery} disabled={loading || running || !code.trim()}><Play size={15} fill="currentColor" /> {running ? 'RUNNING...' : 'RUN QUERY'}</button></div></div>
       <div className="results-header"><span><span className="results-symbol">⌁</span> OUTPUT</span><span>{error ? 'ERROR' : results.length ? `${displayResult?.rows?.length ?? affected} ${displayResult ? 'ROWS' : 'AFFECTED'}` : 'AWAITING QUERY'}</span></div>
       <div className="results-body" aria-live="polite">{error ? <div className="error-message"><X size={16} /><div><strong>QUERY ERROR</strong><p>{error}</p></div></div> : results.length ? displayResult ? <div className="table-scroll"><table><thead><tr><th className="row-index">#</th>{resultColumns.map(col => <th key={col}>{col}</th>)}</tr></thead><tbody>{displayResult.rows.map((row, i) => <tr key={i}><td className="row-index">{i + 1}</td>{resultColumns.map(col => <td key={col}>{row[col] == null ? <em>NULL</em> : String(row[col])}</td>)}</tr>)}</tbody></table>{displayResult.rows.length === 0 && <div className="empty-rows">0 rows returned</div>}</div> : <div className="command-success"><CheckCircle2 size={21} /><div><strong>Command executed</strong><span>{affected ? `${affected} row${affected === 1 ? '' : 's'} affected` : 'Database updated successfully'}</span></div></div> : <div className="empty-output"><div className="empty-output-icon"><Database size={26} /></div><strong>Results will appear here</strong><span>Write a query and hit Run Query to see the magic.</span></div>}</div>
+      {coachNote && <div className="coach-note" role="status">{coachNote}</div>}
       {(feedback && !error) && <div className={`feedback ${feedback.startsWith('Mission complete') ? 'success' : 'neutral'}`}><span>{feedback.startsWith('Mission complete') ? <CheckCircle2 size={15} /> : <Info size={15} />}</span>{feedback}</div>}
       <div className="console-footer"><span><span /> {loading ? 'STARTING ENGINE' : 'CONNECTED TO LOCAL POSTGRESQL'}</span><span>POWERED BY PGLITE</span></div>
     </div>

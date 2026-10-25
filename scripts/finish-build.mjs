@@ -2,6 +2,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { loadEnv } from 'vite'
 import { lessons } from '../src/course.js'
+import { lessonPagerHtml, renderCoachHtml } from '../src/deep-dive-html.js'
+import { getDeepDive } from '../src/deep-dives/index.js'
+import { verifyDeepDiveExamples } from '../src/deep-dives/verify.js'
 import { homeDescription, homeTitle, lessonPath, ogImagePath, pageMeta, structuredData } from '../src/seo.js'
 
 const siteUrl = (process.env.SITE_URL || loadEnv('production', process.cwd(), '').SITE_URL)?.trim()
@@ -15,6 +18,8 @@ if (siteUrl) {
   origin = url.origin
 }
 
+await verifyDeepDiveExamples()
+
 const escapeHtml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 const jsonLd = data => `<script type="application/ld+json" id="structured-data">\n${JSON.stringify(data, null, 2).replaceAll('<', '\\u003c')}\n    </script>`
 const template = await readFile('dist/index.html', 'utf8')
@@ -24,8 +29,9 @@ const pages = [
     <p>Query Quest is a free, interactive PostgreSQL course with 16 hands-on lessons and a SQL playground that runs in your browser.</p>
     <h2>Explore the lessons</h2>
     <ol>${lessons.map(lesson => `<li><a href="${lessonPath(lesson.id)}">${escapeHtml(lesson.title)}</a></li>`).join('')}</ol>` },
-  ...lessons.map(lesson => {
+  ...lessons.map((lesson, index) => {
     const meta = pageMeta('course', lesson.id, lessonPath(lesson.id))
+    const dive = getDeepDive(lesson.id)
     return { ...meta, mode: 'course', id: lesson.id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
     <h1>${escapeHtml(lesson.title)}</h1>
@@ -34,7 +40,9 @@ const pages = [
     <p>${escapeHtml(lesson.concept)}</p>
     <h2>Your mission</h2>
     <p>${escapeHtml(lesson.mission)}</p>
-    <p>Enable JavaScript to run SQL in the interactive lesson.</p>` }
+    <p>Enable JavaScript to run SQL in the interactive lesson.</p>
+    ${dive ? renderCoachHtml(dive) : ''}
+    ${lessonPagerHtml(lessons[index - 1], lessons[index + 1])}` }
   }),
   { ...pageMeta('playground', lessons[0].id), mode: 'playground', id: lessons[0].id, content: `
     <p><a href="/">Query Quest PostgreSQL Course</a></p>
@@ -78,7 +86,48 @@ const assertPage = (page, html) => {
   }
   const resource = data['@graph']?.[0]
   if (resource?.['@type'] !== 'LearningResource' || resource.isPartOf?.['@type'] !== 'Course' || !resource.isPartOf.url) throw new Error(`Lesson JSON-LD must be a LearningResource in the course for ${page.path}`)
+  const dive = getDeepDive(page.id)
+  const faq = data['@graph']?.find(node => node['@type'] === 'FAQPage')
+  if (!html.includes('class="lesson-pager"')) throw new Error(`Missing previous/next links for ${page.path}`)
+  if (html.includes('class="deep-dive"') || html.includes('id="deep-dive"') || html.includes('deep-dive-toc')) throw new Error(`Reading chapter still present on ${page.path}`)
+  if (!dive) {
+    if (faq || html.includes('class="coach-static"')) throw new Error(`Unexpected lesson coach on ${page.path}`)
+    return
+  }
+  const missionAt = html.indexOf(escapeHtml(getLessonMission(page.id)))
+  const coachAt = html.indexOf('id="lesson-coach"')
+  const pagerAt = html.indexOf('class="lesson-pager"')
+  if (missionAt < 0 || coachAt < missionAt || pagerAt < coachAt) throw new Error(`Lesson coach must follow the mission on ${page.path}`)
+  if (!html.includes('class="coach-static"') || !html.includes('id="why-this-works"') || !html.includes('id="why-questions"')) throw new Error(`Lesson coach is incomplete for ${page.path}`)
+  const coachHtml = html.slice(coachAt, pagerAt)
+  if (coachHtml.includes('<details open')) throw new Error(`Coach details must start collapsed on ${page.path}`)
+  const detailCount = coachHtml.split('<details>').length - 1
+  const expectedDetails = dive.hints.length + dive.failures.length + dive.why.challenges.length + 1 + dive.faqs.length
+  if (detailCount !== expectedDetails) throw new Error(`Coach details count ${detailCount} !== ${expectedDetails} on ${page.path}`)
+  for (const hint of dive.hints) if (!coachHtml.includes(escapeHtml(hint.text))) throw new Error(`Hint missing from static HTML for ${page.path}`)
+  for (const rule of dive.failures) if (!coachHtml.includes(escapeHtml(rule.text))) throw new Error(`Failure note missing from static HTML for ${page.path}`)
+  if (!coachHtml.includes(escapeHtml(dive.fallback.error)) || !coachHtml.includes(escapeHtml(dive.fallback.miss))) throw new Error(`Fallback note missing from static HTML for ${page.path}`)
+  for (const paragraph of dive.why.paragraphs) if (!coachHtml.includes(escapeHtml(paragraph))) throw new Error(`Why this works missing from static HTML for ${page.path}`)
+  for (const challenge of dive.why.challenges) {
+    if (!coachHtml.includes(escapeHtml(challenge.prompt)) || !coachHtml.includes(escapeHtml(challenge.sql.trim())) || !coachHtml.includes(escapeHtml(challenge.expect))) {
+      throw new Error(`Challenge missing from static HTML for ${page.path}`)
+    }
+  }
+  if (!coachHtml.includes(escapeHtml(dive.why.quiz.question))) throw new Error(`Quiz missing from static HTML for ${page.path}`)
+  for (const choice of dive.why.quiz.choices) {
+    if (!coachHtml.includes(escapeHtml(choice.text)) || !coachHtml.includes(escapeHtml(choice.why))) throw new Error(`Quiz choice missing from static HTML for ${page.path}`)
+  }
+  if (!faq || faq.mainEntity?.length !== dive.faqs.length || !String(faq.url || '').endsWith('#why-questions')) throw new Error(`FAQPage JSON-LD missing for ${page.path}`)
+  dive.faqs.forEach((item, index) => {
+    const node = faq.mainEntity[index]
+    if (node?.['@type'] !== 'Question' || node.name !== item.question || node.acceptedAnswer?.['@type'] !== 'Answer' || node.acceptedAnswer.text !== item.answer) {
+      throw new Error(`FAQ JSON-LD does not match the visible answer for ${page.path}`)
+    }
+    if (!coachHtml.includes(escapeHtml(item.question)) || !coachHtml.includes(escapeHtml(item.answer))) throw new Error(`FAQ text missing from static HTML for ${page.path}`)
+  })
 }
+
+const getLessonMission = id => lessons.find(lesson => lesson.id === id).mission
 
 for (const page of pages) {
   const escapedTitle = escapeHtml(page.title)
