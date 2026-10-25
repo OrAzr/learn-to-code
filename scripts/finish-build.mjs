@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { loadEnv } from 'vite'
 import { lessons } from '../src/course.js'
-import { deepDiveWordCount, lessonPagerHtml, renderDeepDiveHtml } from '../src/deep-dive-html.js'
-import { getDeepDive, listDeepDives } from '../src/deep-dives/index.js'
+import { lessonPagerHtml, renderCoachHtml } from '../src/deep-dive-html.js'
+import { getDeepDive } from '../src/deep-dives/index.js'
 import { verifyDeepDiveExamples } from '../src/deep-dives/verify.js'
 import { homeDescription, homeTitle, lessonPath, ogImagePath, pageMeta, structuredData } from '../src/seo.js'
 
@@ -18,10 +18,6 @@ if (siteUrl) {
   origin = url.origin
 }
 
-for (const dive of listDeepDives()) {
-  const words = deepDiveWordCount(dive)
-  if (words < 700 || words > 1000) throw new Error(`Deep dive for ${dive.lessonId} is ${words} words; expected 700 to 1000`)
-}
 await verifyDeepDiveExamples()
 
 const escapeHtml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -45,7 +41,7 @@ const pages = [
     <h2>Your mission</h2>
     <p>${escapeHtml(lesson.mission)}</p>
     <p>Enable JavaScript to run SQL in the interactive lesson.</p>
-    ${dive ? renderDeepDiveHtml(dive) : ''}
+    ${dive ? renderCoachHtml(dive) : ''}
     ${lessonPagerHtml(lessons[index - 1], lessons[index + 1])}` }
   }),
   { ...pageMeta('playground', lessons[0].id), mode: 'playground', id: lessons[0].id, content: `
@@ -93,21 +89,41 @@ const assertPage = (page, html) => {
   const dive = getDeepDive(page.id)
   const faq = data['@graph']?.find(node => node['@type'] === 'FAQPage')
   if (!html.includes('class="lesson-pager"')) throw new Error(`Missing previous/next links for ${page.path}`)
+  if (html.includes('class="deep-dive"') || html.includes('id="deep-dive"') || html.includes('deep-dive-toc')) throw new Error(`Reading chapter still present on ${page.path}`)
   if (!dive) {
-    if (faq || html.includes('class="deep-dive"')) throw new Error(`Unexpected deep dive on ${page.path}`)
+    if (faq || html.includes('class="coach-static"')) throw new Error(`Unexpected lesson coach on ${page.path}`)
     return
   }
   const missionAt = html.indexOf(escapeHtml(getLessonMission(page.id)))
-  const diveAt = html.indexOf('id="deep-dive"')
-  if (missionAt < 0 || diveAt < missionAt) throw new Error(`Deep dive must follow the mission on ${page.path}`)
-  if (!html.includes('Last updated') || !html.includes('deep-dive-toc') || !html.includes('deep-dive-reading')) throw new Error(`Deep dive section is incomplete for ${page.path}`)
-  if (!faq || faq.mainEntity?.length !== dive.faqs.length) throw new Error(`FAQPage JSON-LD missing for ${page.path}`)
+  const coachAt = html.indexOf('id="lesson-coach"')
+  const pagerAt = html.indexOf('class="lesson-pager"')
+  if (missionAt < 0 || coachAt < missionAt || pagerAt < coachAt) throw new Error(`Lesson coach must follow the mission on ${page.path}`)
+  if (!html.includes('class="coach-static"') || !html.includes('id="why-this-works"') || !html.includes('id="why-questions"')) throw new Error(`Lesson coach is incomplete for ${page.path}`)
+  const coachHtml = html.slice(coachAt, pagerAt)
+  if (coachHtml.includes('<details open')) throw new Error(`Coach details must start collapsed on ${page.path}`)
+  const detailCount = coachHtml.split('<details>').length - 1
+  const expectedDetails = dive.hints.length + dive.failures.length + dive.why.challenges.length + 1 + dive.faqs.length
+  if (detailCount !== expectedDetails) throw new Error(`Coach details count ${detailCount} !== ${expectedDetails} on ${page.path}`)
+  for (const hint of dive.hints) if (!coachHtml.includes(escapeHtml(hint.text))) throw new Error(`Hint missing from static HTML for ${page.path}`)
+  for (const rule of dive.failures) if (!coachHtml.includes(escapeHtml(rule.text))) throw new Error(`Failure note missing from static HTML for ${page.path}`)
+  if (!coachHtml.includes(escapeHtml(dive.fallback.error)) || !coachHtml.includes(escapeHtml(dive.fallback.miss))) throw new Error(`Fallback note missing from static HTML for ${page.path}`)
+  for (const paragraph of dive.why.paragraphs) if (!coachHtml.includes(escapeHtml(paragraph))) throw new Error(`Why this works missing from static HTML for ${page.path}`)
+  for (const challenge of dive.why.challenges) {
+    if (!coachHtml.includes(escapeHtml(challenge.prompt)) || !coachHtml.includes(escapeHtml(challenge.sql.trim())) || !coachHtml.includes(escapeHtml(challenge.expect))) {
+      throw new Error(`Challenge missing from static HTML for ${page.path}`)
+    }
+  }
+  if (!coachHtml.includes(escapeHtml(dive.why.quiz.question))) throw new Error(`Quiz missing from static HTML for ${page.path}`)
+  for (const choice of dive.why.quiz.choices) {
+    if (!coachHtml.includes(escapeHtml(choice.text)) || !coachHtml.includes(escapeHtml(choice.why))) throw new Error(`Quiz choice missing from static HTML for ${page.path}`)
+  }
+  if (!faq || faq.mainEntity?.length !== dive.faqs.length || !String(faq.url || '').endsWith('#why-questions')) throw new Error(`FAQPage JSON-LD missing for ${page.path}`)
   dive.faqs.forEach((item, index) => {
     const node = faq.mainEntity[index]
     if (node?.['@type'] !== 'Question' || node.name !== item.question || node.acceptedAnswer?.['@type'] !== 'Answer' || node.acceptedAnswer.text !== item.answer) {
       throw new Error(`FAQ JSON-LD does not match the visible answer for ${page.path}`)
     }
-    if (!html.includes(escapeHtml(item.question)) || !html.includes(escapeHtml(item.answer))) throw new Error(`FAQ text missing from static HTML for ${page.path}`)
+    if (!coachHtml.includes(escapeHtml(item.question)) || !coachHtml.includes(escapeHtml(item.answer))) throw new Error(`FAQ text missing from static HTML for ${page.path}`)
   })
 }
 

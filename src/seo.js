@@ -196,7 +196,7 @@ export function structuredData(mode, id, pathname, origin = '') {
   if (dive) {
     graph.push({
       '@type': 'FAQPage',
-      url: `${absolute(origin, meta.path)}#deep-dive-faq`,
+      url: `${absolute(origin, meta.path)}#why-questions`,
       mainEntity: dive.faqs.map(faq => ({
         '@type': 'Question',
         name: faq.question,

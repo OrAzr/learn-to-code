@@ -1,10 +1,4 @@
-import { renderDeepDiveHtml } from './deep-dive-html.js'
 import { lessonPath } from './seo.js'
-
-export function DeepDive({ dive }) {
-  if (!dive) return null
-  return <div className="deep-dive-mount" dangerouslySetInnerHTML={{ __html: renderDeepDiveHtml(dive) }} />
-}
 
 export function LessonPager({ previous, next, onSelect }) {
   if (!previous && !next) return null
